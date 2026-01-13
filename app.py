@@ -61,7 +61,7 @@ refresh_map = {
 
 if auto_refresh != "Off":
     time.sleep(refresh_map[auto_refresh])
-    st.experimental_rerun()
+    st.rerun()
 
 # =========================
 # ASSETS
@@ -236,3 +236,4 @@ def fetch_stock(symbol):
 
     except Exception:
         return None
+
