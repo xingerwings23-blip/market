@@ -2,11 +2,16 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import requests
 import yfinance as yf
+import requests
 import plotly.graph_objects as go
 import time
+
+# --------------------------
+# Paste your Alpha Vantage key here
 ALPHA_VANTAGE_KEY = "8HNY2KQO7SZM8NF9"
+# --------------------------
+
 # =========================
 # PAGE CONFIG
 # =========================
@@ -69,46 +74,86 @@ def fetch_binance(symbol, interval, limit=500, retries=2):
             time.sleep(1)
     return None
 
-def fetch_stock(symbol, period="1y", interval="1d", retries=2):
+def fetch_coingecko(symbol, retries=2):
+    coin_map = {
+        "BTCUSDT":"bitcoin",
+        "ETHUSDT":"ethereum",
+        "SOLUSDT":"solana",
+        "BNBUSDT":"binancecoin"
+    }
+    if symbol not in coin_map:
+        return None
+    id = coin_map[symbol]
+    url = f"https://api.coingecko.com/api/v3/coins/{id}/market_chart?vs_currency=usd&days=365&interval=daily"
     for attempt in range(retries+1):
         try:
-            df = yf.download(symbol, period=period, interval=interval, progress=False)
-            if df.empty:
-                continue
-            # Ensure required columns exist
-            for col in ["Open","High","Low","Close","Volume"]:
-                if col not in df.columns:
-                    df[col] = np.nan
-            df = df[["Open","High","Low","Close","Volume"]]
-            df.columns = [c.lower() for c in df.columns]
-            df.index.name = "Date"
-            return df
+            res = requests.get(url, timeout=10)
+            res.raise_for_status()
+            data = res.json()
+            prices = data["prices"]
+            df = pd.DataFrame(prices, columns=["Date","close"])
+            df["Date"] = pd.to_datetime(df["Date"], unit="ms")
+            df.set_index("Date", inplace=True)
+            df["open"] = df["close"]
+            df["high"] = df["close"]
+            df["low"] = df["close"]
+            df["volume"] = np.nan
+            return df[["open","high","low","close","volume"]]
         except:
             time.sleep(1)
     return None
 
+def fetch_stock(symbol, period="1y", interval="1d", retries=2):
+    # Primary: yfinance
+    for attempt in range(retries+1):
+        try:
+            df = yf.download(symbol, period=period, interval=interval, progress=False)
+            if not df.empty:
+                for col in ["Open","High","Low","Close","Volume"]:
+                    if col not in df.columns:
+                        df[col] = np.nan
+                df = df[["Open","High","Low","Close","Volume"]]
+                df.columns = [c.lower() for c in df.columns]
+                df.index.name = "Date"
+                return df
+        except:
+            time.sleep(1)
+
+    # Backup: Alpha Vantage
+    url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY_ADJUSTED&symbol={symbol}&outputsize=full&apikey={ALPHA_VANTAGE_KEY}"
+    try:
+        res = requests.get(url, timeout=10)
+        data = res.json()
+        if "Time Series (Daily)" not in data:
+            return None
+        ts = data["Time Series (Daily)"]
+        df = pd.DataFrame.from_dict(ts, orient="index")
+        df = df.rename(columns={
+            "1. open":"open",
+            "2. high":"high",
+            "3. low":"low",
+            "4. close":"close",
+            "6. volume":"volume"
+        })
+        df = df[["open","high","low","close","volume"]].astype(float)
+        df.index = pd.to_datetime(df.index)
+        df = df.sort_index()
+        return df
+    except:
+        return None
+
 # =========================
-# GET DATA WITH FALLBACKS
+# GET DATA
 # =========================
 def get_data(symbol):
     if symbol.endswith("USDT"):
-        # Crypto
-        intervals = ["1d","4h","1h","15m"]
-        for intrv in intervals:
-            st.info(f"Fetching {symbol} data with interval {intrv}...")
-            df = fetch_binance(symbol, intrv)
-            if df is not None and not df.empty:
-                return df
-        return None
+        df = fetch_binance(symbol, "1d")
+        if df is None:
+            df = fetch_coingecko(symbol)
+        return df
     else:
-        # Stocks
-        periods = [("1y","1d"), ("2y","1wk")]
-        for period, interval in periods:
-            st.info(f"Fetching {symbol} data {period} {interval}...")
-            df = fetch_stock(symbol, period, interval)
-            if df is not None and not df.empty:
-                return df
-        return None
+        df = fetch_stock(symbol)
+        return df
 
 # =========================
 # ANALYSIS FUNCTION
@@ -165,13 +210,6 @@ def analyze(df):
 # RUN ANALYSIS
 # =========================
 df = get_data(selected)
-
-# =========================
-# DEBUG DISPLAY (Optional)
-# =========================
-st.write("DEBUG: DataFrame preview")
-st.write(df)
-
 result = analyze(df)
 
 if result is None:
@@ -198,4 +236,3 @@ fig.update_layout(template="plotly_dark" if theme_mode=="Dark" else "plotly_whit
 st.plotly_chart(fig, use_container_width=True)
 
 st.write("Reasons:", ", ".join(result["reasons"]))
-
