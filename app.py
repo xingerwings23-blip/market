@@ -77,15 +77,18 @@ def fetch_stock(symbol):
         return None
 
 # =========================
-# GET DATA (NORMALIZE COLUMNS)
+# GET DATA (SAFE NORMALIZATION)
 # =========================
 def get_data(symbol):
     if symbol.endswith("USDT"):
         df = fetch_binance_ohlcv(symbol)
     else:
         df = fetch_stock(symbol)
+    
+    # ⚠ Check if df is None or empty BEFORE accessing columns
     if df is None or df.empty:
         return None
+    
     df.columns = [c.lower() for c in df.columns]  # normalize column names
     return df
 
