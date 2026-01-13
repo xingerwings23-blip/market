@@ -79,4 +79,177 @@ st.markdown("<p style='text-align:center;color:gray;'>Buy % • Sell % • Neutr
 # ASSET LIST
 # =========================
 assets = ["BTC-USD", "ETH-USD", "SOL-USD", "BNB-USD", "AAPL", "TSLA"]
-interval
+interval = st.selectbox("Interval", ["15m", "1h", "4h", "1d"])
+period_map = {"15m": "7d", "1h": "30d", "4h": "90d", "1d": "1y"}
+period = period_map[interval]
+
+# =========================
+# SAFE ANALYSIS FUNCTION
+# =========================
+def analyze(symbol, interval, period):
+    try:
+        data = yf.download(symbol, period=period, interval=interval, progress=False)
+        if data.empty or len(data) < 20:
+            return None
+
+        # RSI
+        delta = data["Close"].diff()
+        gain = delta.clip(lower=0)
+        loss = -delta.clip(upper=0)
+        rs = gain.rolling(14).mean() / loss.rolling(14).mean()
+        data["RSI"] = 100 - (100 / (1 + rs))
+
+        # Moving Averages
+        data["MA20"] = data["Close"].rolling(20).mean()
+        data["MA50"] = data["Close"].rolling(50).mean()
+
+        # MACD
+        ema12 = data["Close"].ewm(span=12, adjust=False).mean()
+        ema26 = data["Close"].ewm(span=26, adjust=False).mean()
+        data["MACD"] = ema12 - ema26
+        data["Signal"] = data["MACD"].ewm(span=9, adjust=False).mean()
+
+        latest = data.iloc[-1]
+
+        # SAFETY CHECK: skip if any key indicator is NaN
+        required_cols = ["RSI", "MA20", "MA50", "MACD", "Signal", "Open", "High", "Low", "Close"]
+        for col in required_cols:
+            if col not in data.columns or pd.isna(latest[col]):
+                return None
+
+        score = 0
+        reasons = []
+
+        # RSI
+        if latest["RSI"] < 30:
+            score += 25
+            reasons.append("RSI is low (market cooled)")
+        elif latest["RSI"] > 70:
+            score -= 25
+            reasons.append("RSI is high (market stretched)")
+        else:
+            reasons.append("RSI is neutral")
+
+        # Trend
+        if latest["MA20"] > latest["MA50"]:
+            score += 20
+            reasons.append("Short-term trend above long-term trend")
+        else:
+            score -= 20
+            reasons.append("Short-term trend below long-term trend")
+
+        # MACD
+        if latest["MACD"] > latest["Signal"]:
+            score += 20
+            reasons.append("MACD momentum is increasing")
+        else:
+            score -= 20
+            reasons.append("MACD momentum is decreasing")
+
+        # Volume
+        if "Volume" in data.columns and not pd.isna(latest["Volume"]):
+            vol_strength = latest["Volume"] / data["Volume"].rolling(20).mean().iloc[-1]
+            if vol_strength > 1.2:
+                score += 10
+                reasons.append("Volume above average")
+            else:
+                reasons.append("Volume normal")
+        else:
+            reasons.append("Volume data missing")
+
+        buy_pct = np.clip(50 + score, 0, 100)
+        sell_pct = 100 - buy_pct
+        if 45 <= buy_pct <= 55:
+            bias = "NEUTRAL"
+        elif buy_pct > 55:
+            bias = "BUY-SIDE DOMINANT"
+        else:
+            bias = "SELL-SIDE DOMINANT"
+
+        explanation = " • ".join(reasons)
+        return {"symbol": symbol, "buy": round(buy_pct, 1), "sell": round(sell_pct, 1),
+                "bias": bias, "explanation": explanation, "data": data}
+    except Exception as e:
+        # Catch any unexpected error
+        return None
+
+# =========================
+# FETCH RESULTS
+# =========================
+results = []
+for a in assets:
+    r = analyze(a, interval, period)
+    if r is not None:
+        results.append(r)
+
+if len(results) == 0:
+    st.warning("⚠️ No data available for selected interval/period. Try different interval or asset.")
+    st.stop()
+
+# =========================
+# HEAT MAP
+# =========================
+st.markdown("## 🔥 Market Heat Map")
+heat_cols = st.columns(len(results))
+for col, r in zip(heat_cols, results):
+    color = "#2ecc71" if r["buy"] > 60 else "#e74c3c" if r["buy"] < 40 else "#f1c40f"
+    col.markdown(f"""
+        <div style='padding:15px;border-radius:12px;background:{color};color:black;text-align:center;'>
+        <h3>{r["symbol"]}</h3>
+        <p>Buy {r['buy']}%</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+# =========================
+# SCANNER TABLE
+# =========================
+st.markdown("## 🔍 Multi-Asset Scanner")
+scanner_df = pd.DataFrame([{"Asset": r["symbol"], "Buy %": r["buy"], "Sell %": r["sell"], "Bias": r["bias"]} for r in results])
+st.dataframe(scanner_df, use_container_width=True)
+
+# =========================
+# DETAILED VIEW
+# =========================
+st.markdown("## 📈 Detailed Chart & Explanation")
+selected = st.selectbox("Select Asset", [r["symbol"] for r in results])
+selected_data = next((r for r in results if r["symbol"] == selected), None)
+if selected_data is None:
+    st.error(f"No data available for {selected}.")
+    st.stop()
+
+# Candlestick chart with safety check
+d = selected_data["data"]
+required_cols = ["Open", "High", "Low", "Close"]
+if d.empty or not all(col in d.columns for col in required_cols) or len(d) < 10:
+    st.warning(f"⚠️ Not enough data to display chart for {selected_data['symbol']}.")
+else:
+    fig = go.Figure()
+    fig.add_trace(go.Candlestick(
+        x=d.index, open=d["Open"], high=d["High"], low=d["Low"], close=d["Close"], name="Price"
+    ))
+    if "MA20" in d.columns:
+        fig.add_trace(go.Scatter(x=d.index, y=d["MA20"], name="MA20"))
+    if "MA50" in d.columns:
+        fig.add_trace(go.Scatter(x=d.index, y=d["MA50"], name="MA50"))
+    fig.update_layout(template="plotly_dark" if theme_mode=="Dark" else "plotly_white", height=450, xaxis_rangeslider_visible=False)
+    st.plotly_chart(fig, use_container_width=True)
+
+# Metrics
+c1, c2, c3 = st.columns(3)
+c1.metric("📈 Buy Pressure", f"{selected_data['buy']}%")
+c2.metric("📉 Sell Pressure", f"{selected_data['sell']}%")
+c3.metric("⚖️ Bias", selected_data["bias"])
+
+# AI Explanation
+st.markdown("### 🧠 AI Explanation (Why this bias exists)")
+st.info(selected_data["explanation"])
+
+# Confidence Alert
+if selected_data['buy'] > 75:
+    st.success("📊 High buy-side confidence")
+elif selected_data['sell'] > 75:
+    st.error("📊 High sell-side pressure")
+elif 45 <= selected_data['buy'] <= 55:
+    st.warning("⚖️ Market Neutral / Low Confidence")
+
+st.markdown("<hr><p style='text-align:center;color:gray;'>Educational analysis only • Not financial advice</p>", unsafe_allow_html=True)
