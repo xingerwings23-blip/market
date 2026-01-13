@@ -1,4 +1,3 @@
-
 # =========================
 # STREAMLIT CONFIG
 # =========================
@@ -16,8 +15,7 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-from datetime import datetime
-import time
+from streamlit_autorefresh import st_autorefresh
 
 # =========================
 # DISCLAIMER / WARNING
@@ -39,6 +37,12 @@ if not st.session_state.accepted_warning:
         st.session_state.accepted_warning = True
         st.experimental_rerun()
     st.stop()
+
+# =========================
+# AUTO REFRESH
+# =========================
+# Refresh every 60 seconds (adjustable via sidebar later)
+st_autorefresh(interval=60000, key="auto_refresh")
 
 # =========================
 # THEME SETTINGS
@@ -147,65 +151,68 @@ def analyze(symbol):
             "bias": bias, "explanation": explanation, "data": data}
 
 # =========================
-# AUTO-REFRESH
+# RUN ANALYSIS
 # =========================
-placeholder = st.empty()
-while True:
-    results = []
-    for a in assets:
-        r = analyze(a)
-        if r:
-            results.append(r)
+results = []
+for a in assets:
+    r = analyze(a)
+    if r:
+        results.append(r)
 
-    with placeholder.container():
-        # HEAT MAP
-        st.markdown("## 🔥 Market Heat Map")
-        heat_cols = st.columns(len(results))
-        for col, r in zip(heat_cols, results):
-            color = "#2ecc71" if r["buy"] > 60 else "#e74c3c" if r["buy"] < 40 else "#f1c40f"
-            col.markdown(f"""
-                <div style='padding:15px;border-radius:12px;background:{color};color:black;text-align:center;'>
-                <h3>{r["symbol"]}</h3>
-                <p>Buy {r['buy']}%</p>
-                </div>
-                """, unsafe_allow_html=True)
+# =========================
+# HEAT MAP
+# =========================
+st.markdown("## 🔥 Market Heat Map")
+heat_cols = st.columns(len(results))
+for col, r in zip(heat_cols, results):
+    color = "#2ecc71" if r["buy"] > 60 else "#e74c3c" if r["buy"] < 40 else "#f1c40f"
+    col.markdown(f"""
+        <div style='padding:15px;border-radius:12px;background:{color};color:black;text-align:center;'>
+        <h3>{r["symbol"]}</h3>
+        <p>Buy {r['buy']}%</p>
+        </div>
+        """, unsafe_allow_html=True)
 
-        # SCANNER TABLE
-        st.markdown("## 🔍 Multi-Asset Scanner")
-        scanner_df = pd.DataFrame([{"Asset": r["symbol"], "Buy %": r["buy"], "Sell %": r["sell"], "Bias": r["bias"]} for r in results])
-        st.dataframe(scanner_df, use_container_width=True)
+# =========================
+# SCANNER TABLE
+# =========================
+st.markdown("## 🔍 Multi-Asset Scanner")
+scanner_df = pd.DataFrame([{"Asset": r["symbol"], "Buy %": r["buy"], "Sell %": r["sell"], "Bias": r["bias"]} for r in results])
+st.dataframe(scanner_df, use_container_width=True)
 
-        # SELECTED ASSET DETAIL
-        st.markdown("## 📈 Detailed Chart & Explanation")
-        selected = st.selectbox("Select Asset", [r["symbol"] for r in results])
-        selected_data = next(r for r in results if r["symbol"] == selected)
-        # Candlestick chart
-        fig = go.Figure()
-        d = selected_data["data"]
-        fig.add_trace(go.Candlestick(x=d.index, open=d["Open"], high=d["High"], low=d["Low"], close=d["Close"], name="Price"))
-        fig.add_trace(go.Scatter(x=d.index, y=d["MA20"], name="MA20"))
-        fig.add_trace(go.Scatter(x=d.index, y=d["MA50"], name="MA50"))
-        fig.update_layout(template="plotly_dark" if theme_mode=="Dark" else "plotly_white", height=450, xaxis_rangeslider_visible=False)
-        st.plotly_chart(fig, use_container_width=True)
+# =========================
+# DETAILED VIEW
+# =========================
+st.markdown("## 📈 Detailed Chart & Explanation")
+selected = st.selectbox("Select Asset", [r["symbol"] for r in results])
+selected_data = next(r for r in results if r["symbol"] == selected)
 
-        # Metrics
-        c1, c2, c3 = st.columns(3)
-        c1.metric("📈 Buy Pressure", f"{selected_data['buy']}%")
-        c2.metric("📉 Sell Pressure", f"{selected_data['sell']}%")
-        c3.metric("⚖️ Bias", selected_data["bias"])
+# Candlestick chart
+fig = go.Figure()
+d = selected_data["data"]
+fig.add_trace(go.Candlestick(x=d.index, open=d["Open"], high=d["High"], low=d["Low"], close=d["Close"], name="Price"))
+fig.add_trace(go.Scatter(x=d.index, y=d["MA20"], name="MA20"))
+fig.add_trace(go.Scatter(x=d.index, y=d["MA50"], name="MA50"))
+fig.update_layout(template="plotly_dark" if theme_mode=="Dark" else "plotly_white", height=450, xaxis_rangeslider_visible=False)
+st.plotly_chart(fig, use_container_width=True)
 
-        # AI Explanation
-        st.markdown("### 🧠 AI Explanation (Why this bias exists)")
-        st.info(selected_data["explanation"])
+# Metrics
+c1, c2, c3 = st.columns(3)
+c1.metric("📈 Buy Pressure", f"{selected_data['buy']}%")
+c2.metric("📉 Sell Pressure", f"{selected_data['sell']}%")
+c3.metric("⚖️ Bias", selected_data["bias"])
 
-        # Confidence Alert
-        if selected_data['buy'] > 75:
-            st.success("📊 High buy-side confidence")
-        elif selected_data['sell'] > 75:
-            st.error("📊 High sell-side pressure")
-        elif 45 <= selected_data['buy'] <= 55:
-            st.warning("⚖️ Market Neutral / Low Confidence")
+# AI Explanation
+st.markdown("### 🧠 AI Explanation (Why this bias exists)")
+st.info(selected_data["explanation"])
 
-        st.markdown("<hr><p style='text-align:center;color:gray;'>Educational analysis only • Not financial advice</p>", unsafe_allow_html=True)
+# Confidence Alert
+if selected_data['buy'] > 75:
+    st.success("📊 High buy-side confidence")
+elif selected_data['sell'] > 75:
+    st.error("📊 High sell-side pressure")
+elif 45 <= selected_data['buy'] <= 55:
+    st.warning("⚖️ Market Neutral / Low Confidence")
 
-    time.sleep(refresh_rate)
+st.markdown("<hr><p style='text-align:center;color:gray;'>Educational analysis only • Not financial advice</p>", unsafe_allow_html=True)
+
