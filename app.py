@@ -54,8 +54,5 @@ with st.sidebar:
 bg_color = "#0e1117" if theme_mode == "Dark" else "#f5f5f5"
 text_color = "white" if theme_mode == "Dark" else "black"
 
-st.markdown(
-    f"""
-    <style>
-    body {{
-        background-color: {bg_color};
+# =========================
+# APPLY CSS SAF
