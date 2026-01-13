@@ -9,7 +9,7 @@ import time
 # =========================
 # API KEY
 # =========================
-ALPHA_VANTAGE_KEY = "PASTE_YOUR_ALPHA_VANTAGE_KEY_HERE"
+ALPHA_VANTAGE_KEY = "8HNY2KQO7SZM8NF9"
 
 # =========================
 # PAGE CONFIG
