@@ -1,19 +1,31 @@
+
+# =========================
+# STREAMLIT CONFIG
+# =========================
+import streamlit as st
+st.set_page_config(
+    page_title="Market Analysis Dashboard",
+    page_icon="📊",
+    layout="wide"
+)
+
+# =========================
+# IMPORTS
+# =========================
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import streamlit as st
 import plotly.graph_objects as go
 from datetime import datetime
 import time
 
 # =========================
-# SESSION STATE FOR WARNING
+# DISCLAIMER / WARNING
 # =========================
 if "accepted_warning" not in st.session_state:
     st.session_state.accepted_warning = False
 
 if not st.session_state.accepted_warning:
-    st.set_page_config(page_title="Warning", page_icon="⚠️", layout="centered")
     st.warning("⚠️ IMPORTANT DISCLAIMER")
     st.markdown("""
     **This app is for educational purposes only.**  
@@ -31,14 +43,12 @@ if not st.session_state.accepted_warning:
 # =========================
 # THEME SETTINGS
 # =========================
-st.set_page_config(page_title="Market Analysis Dashboard", page_icon="📊", layout="wide")
 with st.sidebar:
     st.markdown("## 🎨 Appearance Settings")
     theme_mode = st.selectbox("Theme Mode", ["Dark", "Light"])
     accent_color = st.color_picker("Accent Color", "#00ff99")
     refresh_rate = st.number_input("Auto-refresh (seconds)", min_value=10, max_value=3600, value=60, step=10)
 
-# Dynamic background
 bg_color = "#0e1117" if theme_mode == "Dark" else "#f5f5f5"
 text_color = "white" if theme_mode == "Dark" else "black"
 
