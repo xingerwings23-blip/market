@@ -75,13 +75,16 @@ def fetch_stock(symbol):
         return None
 
 # =========================
-# GET DATA
+# GET DATA (NORMALIZE COLUMNS)
 # =========================
 def get_data(symbol):
     if symbol.endswith("USDT"):
-        return fetch_binance_ohlcv(symbol)
+        df = fetch_binance_ohlcv(symbol)
     else:
-        return fetch_stock(symbol)
+        df = fetch_stock(symbol)
+    if df is not None:
+        df.columns = [c.lower() for c in df.columns]  # normalize column names
+    return df
 
 # =========================
 # ANALYSIS FUNCTION
@@ -135,7 +138,7 @@ def analyze(df):
     return {"buy": round(buy_pct,1), "sell": round(sell_pct,1), "bias": bias, "reasons": reasons, "df": df}
 
 # =========================
-# RUN
+# RUN ANALYSIS
 # =========================
 df = get_data(selected)
 result = analyze(df)
@@ -145,7 +148,8 @@ if result is None:
     st.stop()
 
 # =========================
-# DISPLAY
+# DISPLAY DASHBOARD
+# =========================
 st.write(f"**{selected}** — Buy {result['buy']}% | Sell {result['sell']}% | {result['bias']}")
 
 fig = go.Figure()
@@ -158,7 +162,8 @@ fig.add_trace(go.Candlestick(
 ))
 fig.add_trace(go.Scatter(x=result["df"].index, y=result["df"]["MA20"], name="MA20"))
 fig.add_trace(go.Scatter(x=result["df"].index, y=result["df"]["MA50"], name="MA50"))
-fig.update_layout(template="plotly_dark" if theme_mode=="Dark" else "plotly_white", height=450, xaxis_rangeslider_visible=False)
+fig.update_layout(template="plotly_dark" if theme_mode=="Dark" else "plotly_white",
+                  height=450, xaxis_rangeslider_visible=False)
 st.plotly_chart(fig, use_container_width=True)
 
 st.write("Reasons:", ", ".join(result["reasons"]))
