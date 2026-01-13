@@ -78,6 +78,10 @@ def fetch_stock(symbol, period="1y", interval="1d", retries=2):
             df = yf.download(symbol, period=period, interval=interval, progress=False)
             if df.empty:
                 continue
+            # Standardize columns to match crypto format
+            df = df[["Open","High","Low","Close","Volume"]]
+            df.columns = [c.lower() for c in df.columns]
+            df.index.name = "Date"
             return df
         except:
             time.sleep(1)
@@ -107,10 +111,6 @@ def get_data(symbol):
             st.info(f"Fetching {symbol} data {period} {interval}...")
             df = fetch_stock(symbol, period, interval)
             if df is not None and not df.empty:
-                try:
-                    df.columns = [c.lower() for c in df.columns]
-                except:
-                    continue
                 return df
         return None
 
@@ -168,3 +168,30 @@ def analyze(df):
 # =========================
 # RUN ANALYSIS
 # =========================
+df = get_data(selected)
+result = analyze(df)
+
+if result is None:
+    st.error("Could not fetch enough data for this asset. Try again later.")
+    st.stop()
+
+# =========================
+# DISPLAY DASHBOARD
+# =========================
+st.write(f"**{selected}** — Buy {result['buy']}% | Sell {result['sell']}% | {result['bias']}")
+
+fig = go.Figure()
+fig.add_trace(go.Candlestick(
+    x=result["df"].index,
+    open=result["df"]["open"],
+    high=result["df"]["high"],
+    low=result["df"]["low"],
+    close=result["df"]["close"]
+))
+fig.add_trace(go.Scatter(x=result["df"].index, y=result["df"]["MA20"], name="MA20"))
+fig.add_trace(go.Scatter(x=result["df"].index, y=result["df"]["MA50"], name="MA50"))
+fig.update_layout(template="plotly_dark" if theme_mode=="Dark" else "plotly_white",
+                  height=450, xaxis_rangeslider_visible=False)
+st.plotly_chart(fig, use_container_width=True)
+
+st.write("Reasons:", ", ".join(result["reasons"]))
