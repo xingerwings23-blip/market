@@ -48,21 +48,23 @@ selected = st.selectbox("Select Asset", assets)
 # =========================
 def fetch_binance_ohlcv(symbol, interval="1d", limit=500):
     url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
-    res = requests.get(url, timeout=10)
-    if res.status_code != 200:
+    try:
+        res = requests.get(url, timeout=10)
+        res.raise_for_status()
+        data = res.json()
+        if not data:
+            return None
+        df = pd.DataFrame(data, columns=[
+            "open_time", "open", "high", "low", "close", "volume",
+            "close_time", "quote_asset_volume", "trades", "taker_buy_base_vol",
+            "taker_buy_quote_vol", "ignore"
+        ])
+        df["Date"] = pd.to_datetime(df["open_time"], unit="ms")
+        df.set_index("Date", inplace=True)
+        df[["open","high","low","close","volume"]] = df[["open","high","low","close","volume"]].astype(float)
+        return df[["open","high","low","close","volume"]]
+    except:
         return None
-    data = res.json()
-    if not data:
-        return None
-    df = pd.DataFrame(data, columns=[
-        "open_time", "open", "high", "low", "close", "volume",
-        "close_time", "quote_asset_volume", "trades", "taker_buy_base_vol",
-        "taker_buy_quote_vol", "ignore"
-    ])
-    df["Date"] = pd.to_datetime(df["open_time"], unit="ms")
-    df.set_index("Date", inplace=True)
-    df[["open","high","low","close","volume"]] = df[["open","high","low","close","volume"]].astype(float)
-    return df[["open","high","low","close","volume"]]
 
 # =========================
 # STOCK FETCH FUNCTION
@@ -82,8 +84,9 @@ def get_data(symbol):
         df = fetch_binance_ohlcv(symbol)
     else:
         df = fetch_stock(symbol)
-    if df is not None:
-        df.columns = [c.lower() for c in df.columns]  # normalize column names
+    if df is None or df.empty:
+        return None
+    df.columns = [c.lower() for c in df.columns]  # normalize column names
     return df
 
 # =========================
