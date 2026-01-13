@@ -15,9 +15,6 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-from pycoingecko import CoinGeckoAPI
-
-cg = CoinGeckoAPI()
 
 # =========================
 # DISCLAIMER / WARNING
@@ -59,55 +56,29 @@ st.markdown("<p style='text-align:center;color:gray;'>Buy % • Sell % • Neutr
 # =========================
 # ASSET LIST
 # =========================
-assets = ["BTC", "ETH", "SOL", "BNB", "AAPL", "TSLA"]
+assets = ["BTC-USD", "ETH-USD", "SOL-USD", "BNB-USD", "AAPL", "TSLA"]
 selected = st.selectbox("Select Asset", assets)
 
+interval = "1d"  # daily interval, guaranteed to work
+period = "1y"
+
 # =========================
-# DATA FETCH FUNCTIONS
+# DATA FETCH FUNCTION
 # =========================
-
-def fetch_crypto(symbol):
-    """Fetch daily OHLC data for crypto using CoinGecko."""
+def fetch_data(symbol):
+    """Fetch daily OHLC data using yfinance."""
     try:
-        data = cg.get_coin_market_chart_by_id(id=symbol.lower(), vs_currency='usd', days=365)
-        prices = data.get("prices", [])
-        if not prices:
-            return None
-
-        df = pd.DataFrame(prices, columns=["timestamp", "price"])
-        df["Date"] = pd.to_datetime(df["timestamp"], unit="ms")
-        df = df.set_index("Date")
-        df["Open"] = df["price"]
-        df["High"] = df["price"]
-        df["Low"] = df["price"]
-        df["Close"] = df["price"]
-        df["Volume"] = np.nan
-        return df
-    except Exception:
-        return None
-
-def fetch_stock(symbol):
-    """Fetch daily OHLC data for stocks using yfinance."""
-    try:
-        df = yf.download(symbol, period="1y", interval="1d", progress=False)
+        df = yf.download(symbol, period=period, interval=interval, progress=False)
         if df.empty:
             return None
         return df
-    except Exception:
+    except:
         return None
 
-def get_data(symbol):
-    """Return a DataFrame of price history depending on asset type."""
-    if symbol in ["BTC", "ETH", "SOL", "BNB"]:
-        return fetch_crypto(symbol)
-    else:
-        return fetch_stock(symbol)
-
 # =========================
-# ANALYSIS LOGIC
+# ANALYSIS FUNCTION
 # =========================
-
-def analyze(symbol, df):
+def analyze(df):
     if df is None or df.empty or len(df) < 20:
         return None
 
@@ -156,35 +127,37 @@ def analyze(symbol, df):
         bias = "SELL-SIDE DOMINANT"
 
     explanation = " • ".join(reasons)
-    return {"symbol": symbol, "buy": round(buy_pct,1), "sell": round(sell_pct,1),
+    return {"buy": round(buy_pct,1), "sell": round(sell_pct,1),
             "bias": bias, "explanation": explanation, "data": df}
 
 # =========================
 # RUN ANALYSIS
 # =========================
-df = get_data(selected)
-result = analyze(selected, df)
+df = fetch_data(selected)
+result = analyze(df)
 
 if result is None:
     st.warning("⚠️ Not enough data available to analyze this asset.")
     st.stop()
 
 # =========================
-# HEAT MAP (SINGLE)
+# ASSET METRICS
 # =========================
-st.markdown("## 🔥 Asset Analysis")
-st.markdown(f"**{selected}** — Buy {result['buy']}% | Sell {result['sell']}% | Bias: {result['bias']}")
+st.markdown(f"## 🔥 {selected} Analysis")
+st.markdown(f"Buy {result['buy']}% | Sell {result['sell']}% | Bias: {result['bias']}")
 
 # =========================
 # PRICE CHART
 # =========================
 if df is not None and not df.empty:
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df.index, y=df["Close"], name="Close Price"))
-    if "MA20" in df.columns:
-        fig.add_trace(go.Scatter(x=df.index, y=df["MA20"], name="MA20"))
-    if "MA50" in df.columns:
-        fig.add_trace(go.Scatter(x=df.index, y=df["MA50"], name="MA50"))
+    fig.add_trace(go.Candlestick(
+        x=df.index,
+        open=df["Open"], high=df["High"], low=df["Low"], close=df["Close"],
+        name="Price"
+    ))
+    fig.add_trace(go.Scatter(x=df.index, y=df["MA20"], name="MA20"))
+    fig.add_trace(go.Scatter(x=df.index, y=df["MA50"], name="MA50"))
     fig.update_layout(template="plotly_dark" if theme_mode=="Dark" else "plotly_white",
                       height=450,
                       xaxis_rangeslider_visible=False)
@@ -203,6 +176,4 @@ st.markdown("### 🧠 AI Explanation (Why this bias exists)")
 st.info(result["explanation"])
 
 st.markdown(
-    "<hr><p style='text-align:center;color:gray;'>Educational analysis only • Not financial advice</p>",
-    unsafe_allow_html=True
-)
+    "<hr><p style='text-align:center;color:gray;
