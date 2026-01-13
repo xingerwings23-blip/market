@@ -55,4 +55,28 @@ bg_color = "#0e1117" if theme_mode == "Dark" else "#f5f5f5"
 text_color = "white" if theme_mode == "Dark" else "black"
 
 # =========================
-# APPLY CSS SAF
+# APPLY CSS SAFELY
+# =========================
+css = f"""
+<style>
+body {{
+    background-color: {bg_color};
+    color: {text_color};
+}}
+.stMetric {{
+    background-color: #1c1c1c;
+    border-radius: 12px;
+    padding: 10px;
+}}
+</style>
+"""
+st.markdown(css, unsafe_allow_html=True)
+
+st.markdown(f"<h1 style='text-align:center;color:{accent_color};'>📊 Market Analysis Dashboard</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align:center;color:gray;'>Buy % • Sell % • Neutral • Analysis only</p>", unsafe_allow_html=True)
+
+# =========================
+# ASSET LIST
+# =========================
+assets = ["BTC-USD", "ETH-USD", "SOL-USD", "BNB-USD", "AAPL", "TSLA"]
+interval
