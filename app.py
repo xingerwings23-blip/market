@@ -5,6 +5,7 @@ import numpy as np
 import requests
 import yfinance as yf
 import plotly.graph_objects as go
+import time
 
 # =========================
 # PAGE CONFIG
@@ -44,58 +45,74 @@ assets = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "AAPL", "TSLA"]
 selected = st.selectbox("Select Asset", assets)
 
 # =========================
-# BINANCE FETCH FUNCTION
+# BINANCE FETCH FUNCTION WITH RETRY
 # =========================
-def fetch_binance_ohlcv(symbol, interval="1d", limit=500):
+def fetch_binance(symbol, interval, limit=500, retries=2):
     url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
-    try:
-        res = requests.get(url, timeout=10)
-        res.raise_for_status()
-        data = res.json()
-        if not data:
-            return None
-        df = pd.DataFrame(data, columns=[
-            "open_time", "open", "high", "low", "close", "volume",
-            "close_time", "quote_asset_volume", "trades", "taker_buy_base_vol",
-            "taker_buy_quote_vol", "ignore"
-        ])
-        df["Date"] = pd.to_datetime(df["open_time"], unit="ms")
-        df.set_index("Date", inplace=True)
-        df[["open","high","low","close","volume"]] = df[["open","high","low","close","volume"]].astype(float)
-        return df[["open","high","low","close","volume"]]
-    except:
-        return None
+    for attempt in range(retries+1):
+        try:
+            res = requests.get(url, timeout=10)
+            res.raise_for_status()
+            data = res.json()
+            if not data:
+                continue
+            df = pd.DataFrame(data, columns=[
+                "open_time", "open", "high", "low", "close", "volume",
+                "close_time", "quote_asset_volume", "trades", "taker_buy_base_vol",
+                "taker_buy_quote_vol", "ignore"
+            ])
+            df["Date"] = pd.to_datetime(df["open_time"], unit="ms")
+            df.set_index("Date", inplace=True)
+            df[["open","high","low","close","volume"]] = df[["open","high","low","close","volume"]].astype(float)
+            return df[["open","high","low","close","volume"]]
+        except:
+            time.sleep(1)  # wait 1s and retry
+    return None
 
 # =========================
-# STOCK FETCH FUNCTION
+# STOCK FETCH FUNCTION WITH RETRY
 # =========================
-def fetch_stock(symbol):
-    try:
-        df = yf.download(symbol, period="1y", interval="1d", progress=False)
-        return df
-    except:
-        return None
+def fetch_stock(symbol, period="1y", interval="1d", retries=2):
+    for attempt in range(retries+1):
+        try:
+            df = yf.download(symbol, period=period, interval=interval, progress=False)
+            if df.empty:
+                continue
+            return df
+        except:
+            time.sleep(1)
+    return None
 
 # =========================
-# GET DATA (FULLY BULLETPROOF)
+# GET DATA WITH MULTI-INTERVAL FALLBACK
 # =========================
 def get_data(symbol):
     if symbol.endswith("USDT"):
-        df = fetch_binance_ohlcv(symbol)
+        # Crypto intervals
+        intervals = ["1d", "4h", "1h", "15m"]
+        for intrv in intervals:
+            st.info(f"Fetching {symbol} data with interval {intrv}...")
+            df = fetch_binance(symbol, intrv)
+            if df is not None and not df.empty:
+                try:
+                    df.columns = [c.lower() for c in df.columns]
+                except:
+                    continue
+                return df
+        return None
     else:
-        df = fetch_stock(symbol)
-    
-    # ⚠ Early return if df is None or empty
-    if df is None or df.empty:
+        # Stocks: daily, then weekly
+        periods = [("1y","1d"), ("2y","1wk")]
+        for period, interval in periods:
+            st.info(f"Fetching {symbol} data {period} {interval}...")
+            df = fetch_stock(symbol, period, interval)
+            if df is not None and not df.empty:
+                try:
+                    df.columns = [c.lower() for c in df.columns]
+                except:
+                    continue
+                return df
         return None
-
-    # ⚠ Try normalizing columns; return None if fails
-    try:
-        df.columns = [c.lower() for c in df.columns]
-    except AttributeError:
-        return None
-
-    return df
 
 # =========================
 # ANALYSIS FUNCTION
@@ -151,30 +168,3 @@ def analyze(df):
 # =========================
 # RUN ANALYSIS
 # =========================
-df = get_data(selected)
-result = analyze(df)
-
-if result is None:
-    st.error("Could not fetch enough data for this asset. Try again later.")
-    st.stop()
-
-# =========================
-# DISPLAY DASHBOARD
-# =========================
-st.write(f"**{selected}** — Buy {result['buy']}% | Sell {result['sell']}% | {result['bias']}")
-
-fig = go.Figure()
-fig.add_trace(go.Candlestick(
-    x=result["df"].index,
-    open=result["df"]["open"],
-    high=result["df"]["high"],
-    low=result["df"]["low"],
-    close=result["df"]["close"]
-))
-fig.add_trace(go.Scatter(x=result["df"].index, y=result["df"]["MA20"], name="MA20"))
-fig.add_trace(go.Scatter(x=result["df"].index, y=result["df"]["MA50"], name="MA50"))
-fig.update_layout(template="plotly_dark" if theme_mode=="Dark" else "plotly_white",
-                  height=450, xaxis_rangeslider_visible=False)
-st.plotly_chart(fig, use_container_width=True)
-
-st.write("Reasons:", ", ".join(result["reasons"]))
