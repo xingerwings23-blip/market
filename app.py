@@ -85,11 +85,12 @@ def get_data(symbol):
     else:
         df = fetch_stock(symbol)
     
-    # ⚠ Check if df is None or empty BEFORE accessing columns
+    # ⚠ EARLY RETURN if df is None or empty
     if df is None or df.empty:
         return None
     
-    df.columns = [c.lower() for c in df.columns]  # normalize column names
+    # Only now normalize column names
+    df.columns = [c.lower() for c in df.columns]
     return df
 
 # =========================
