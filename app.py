@@ -6,7 +6,7 @@ import requests
 import yfinance as yf
 import plotly.graph_objects as go
 import time
-
+ALPHA_VANTAGE_KEY = "8HNY2KQO7SZM8NF9"
 # =========================
 # PAGE CONFIG
 # =========================
@@ -198,3 +198,4 @@ fig.update_layout(template="plotly_dark" if theme_mode=="Dark" else "plotly_whit
 st.plotly_chart(fig, use_container_width=True)
 
 st.write("Reasons:", ", ".join(result["reasons"]))
+
