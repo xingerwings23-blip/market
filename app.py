@@ -77,7 +77,7 @@ def fetch_stock(symbol):
         return None
 
 # =========================
-# GET DATA (SAFE NORMALIZATION)
+# GET DATA (FULLY BULLETPROOF)
 # =========================
 def get_data(symbol):
     if symbol.endswith("USDT"):
@@ -85,12 +85,16 @@ def get_data(symbol):
     else:
         df = fetch_stock(symbol)
     
-    # ⚠ EARLY RETURN if df is None or empty
+    # ⚠ Early return if df is None or empty
     if df is None or df.empty:
         return None
-    
-    # Only now normalize column names
-    df.columns = [c.lower() for c in df.columns]
+
+    # ⚠ Try normalizing columns; return None if fails
+    try:
+        df.columns = [c.lower() for c in df.columns]
+    except AttributeError:
+        return None
+
     return df
 
 # =========================
