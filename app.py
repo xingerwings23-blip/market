@@ -122,7 +122,7 @@ def fetch_stock(symbol):
 df = fetch_crypto(asset) if ASSETS[asset]=="crypto" else fetch_stock(asset)
 
 if df is None or len(df) < 50:
-    st.error("Not enough data.")
+    st.error("gratefull fallback")
     st.stop()
 
 # =========================
@@ -236,4 +236,5 @@ def fetch_stock(symbol):
 
     except Exception:
         return None
+
 
